@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Earth Rotation Simulation - Fixed</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f1115; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { text-align: center; color: #4db8ff; margin-bottom: 30px; }
+  
+  .container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
+  
+  .row { 
+    display: grid; 
+    grid-template-columns: 200px 1fr 1fr; 
+    gap: 20px; 
+    align-items: start; 
+    background: #1a1d24; 
+    padding: 20px; 
+    border-radius: 12px; 
+    border: 1px solid #333;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  }
+  
+  .controls { background: #23272f; padding: 15px; border-radius: 8px; height: fit-content; }
+  .slider-group { margin-bottom: 15px; }
+  .slider-group label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #aab; }
+  input[type=range] { width: 100%; accent-color: #4db8ff; cursor: pointer; margin: 5px 0; }
+  .time-display { font-family: monospace; font-size: 1.6rem; text-align: center; color: #4db8ff; margin-top: 5px; font-weight: bold; }
+  .note { font-size: 0.75rem; color: #667; margin-top: 10px; line-height: 1.4; }
+  
+  .canvas-wrap { text-align: center; }
+  .canvas-label { font-size: 0.85rem; color: #889; margin-bottom: 8px; font-weight: 500; }
+  canvas { background: #000; border-radius: 8px; max-width: 100%; height: auto; border: 1px solid #444; display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<h1>🦉 Owl Observer Simulation</h1>
+
+<div class="container">
+  
+  <!-- ROW 1: Sun on Right -->
+  <div class="row">
+    <div class="controls">
+      <div class="slider-group">
+        <label>🕒 เวลา (เลื่อนเพื่อหมุนทวนเข็ม)</label>
+        <input type="range" id="slider1" min="0" max="24" step="0.1" value="6">
+        <div class="time-display" id="time1">06:00</div>
+      </div>
+      <div class="slider-group">
+        <label> Zoom Top View</label>
+        <input type="range" id="zoom1" min="0.8" max="1.3" step="0.05" value="1">
+      </div>
+      <div class="note">
+        Sun: ขวา (12:00)<br>
+        ล่าง (6 นาฬิกา) = 06:00<br>
+        บน (12 นาฬิกา) = 18:00
+      </div>
+    </div>
+    <div class="canvas-wrap">
+      <div class="canvas-label">Top View (Earth-Sun)</div>
+      <canvas id="top1" width="350" height="350"></canvas>
+    </div>
+    <div class="canvas-wrap">
+      <div class="canvas-label">Sky View (มุมมองผู้สังเกต)</div>
+      <canvas id="sky1" width="350" height="250"></canvas>
+    </div>
+  </div>
+
+  <!-- ROW 2: Sun on Left -->
+  <div class="row">
+    <div class="controls">
+      <div class="slider-group">
+        <label>🕒 เวลา (เลื่อนเพื่อหมุนทวนเข็ม)</label>
+        <input type="range" id="slider2" min="0" max="24" step="0.1" value="18">
+        <div class="time-display" id="time2">18:00</div>
+      </div>
+      <div class="slider-group">
+        <label> Zoom Top View</label>
+        <input type="range" id="zoom2" min="0.8" max="1.3" step="0.05" value="1">
+      </div>
+      <div class="note">
+        Sun: ซ้าย (12:00)<br>
+        บน (12 นาฬิกา) = 06:00<br>
+        ล่าง (6 นาฬิกา) = 18:00
+      </div>
+    </div>
+    <div class="canvas-wrap">
+      <div class="canvas-label">Top View (Sun-Earth)</div>
+      <canvas id="top2" width="350" height="350"></canvas>
+    </div>
+    <div class="canvas-wrap">
+      <div class="canvas-label">Sky View (มุมมองผู้สังเกต)</div>
+      <canvas id="sky2" width="350" height="250"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // --- Image Handling ---
+  const owlImg = new Image();
+  owlImg.src = 'owlvybot.png';
+  let owlReady = false;
+  owlImg.onload = () => { owlReady = true; renderAll(); };
+  owlImg.onerror = () => { console.warn('Using fallback owl.'); renderAll(); };
+
+  // --- Math Helpers ---
+  const rad = d => d * Math.PI / 180;
+  const norm = a => ((a % 360) + 360) % 360;
+
+  // --- Core Logic: Time -> Angle (CCW Movement) ---
+  function getAngle(time, sunDeg) {
+    return norm(sunDeg + 90 - (time - 6) * 15);
+  }
+
+  // --- Draw Top View ---
+  function drawTopView(ctx, w, h, sunDeg, time, zoom) {
+    ctx.clearRect(0,0,w,h);
+    const cx = w/2, cy = h/2;
+    const earthR = 80 * zoom;
+    
+    ctx.fillStyle = '#050810';
+    ctx.fillRect(0,0,w,h);
+
+    const obsAngle = getAngle(time, sunDeg);
+    const obsX = cx + Math.cos(rad(obsAngle)) * (earthR + 20*zoom);
+    const obsY = cy + Math.sin(rad(obsAngle)) * (earthR + 20*zoom);
+
+    // Sun
+    const sunDist = 150 * zoom;
+    const sunX = cx + Math.cos(rad(sunDeg)) * sunDist;
+    const sunY = cy + Math.sin(rad(sunDeg)) * sunDist;
+    
+    const glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 60*zoom);
+    glow.addColorStop(0, 'rgba(255,200,50,0.5)'); glow.addColorStop(1, 'rgba(255,200,50,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(sunX, sunY, 60*zoom, 0, Math.PI*2); ctx.fill();
+    
+    ctx.fillStyle = '#ffcc33';
+    ctx.beginPath(); ctx.arc(sunX, sunY, 25*zoom, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign='center'; ctx.fillText('SUN', sunX, sunY + 40);
+
+    // Earth
+    ctx.beginPath(); ctx.arc(cx, cy, earthR, 0, Math.PI*2);
+    ctx.fillStyle = '#152a45'; ctx.fill();
+    ctx.strokeStyle = '#3a7bd5'; ctx.lineWidth = 3; ctx.stroke();
+
+    // Day/Night
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, earthR, rad(sunDeg - 90), rad(sunDeg + 90));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(100,200,255,0.25)';
+    ctx.fill();
+    ctx.restore();
+
+    // CCW Rotation Arrows
+    ctx.strokeStyle = '#4db8ff'; ctx.lineWidth = 2;
+    const arrowR = earthR + 35*zoom;
+    const arrowLen = 18 * zoom;
+    for(let a=0; a<360; a+=90) {
+      const ax = cx + Math.cos(rad(a)) * arrowR;
+      const ay = cy + Math.sin(rad(a)) * arrowR;
+      const dir = rad(a + 90);
+      const dx = Math.cos(dir) * arrowLen;
+      const dy = Math.sin(dir) * arrowLen;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax+dx, ay+dy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ax+dx, ay+dy);
+      ctx.lineTo(ax+dx - Math.cos(dir-0.5)*8*zoom, ay+dy - Math.sin(dir-0.5)*8*zoom);
+      ctx.lineTo(ax+dx - Math.cos(dir+0.5)*8*zoom, ay+dy - Math.sin(dir+0.5)*8*zoom);
+      ctx.fill();
+    }
+
+    // Owl
+    ctx.save();
+    ctx.translate(obsX, obsY);
+    ctx.rotate(rad(obsAngle + 90));
+    if(owlReady) {
+      ctx.drawImage(owlImg, -20*zoom, -45*zoom, 40*zoom, 45*zoom);
+    } else {
+      ctx.fillStyle = '#88ccff';
+      ctx.beginPath(); ctx.arc(0, 0, 15*zoom, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-5*zoom, -5*zoom, 4*zoom, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(5*zoom, -5*zoom, 4*zoom, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Time Label
+    ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+    const hVal = Math.floor(time); const mVal = Math.round((time-hVal)*60);
+    const tStr = `${hVal.toString().padStart(2,'0')}:${mVal.toString().padStart(2,'0')}`;
+    const labelR = earthR + 60*zoom;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(tStr, cx + Math.cos(rad(obsAngle))*labelR, cy + Math.sin(rad(obsAngle))*labelR + 5);
+
+    // --- EAST / WEST ARMS ---
+    ctx.font = '11px sans-serif';
+    const armLen = 30 * zoom;
+    const eastAng = obsAngle + 90; 
+    const westAng = obsAngle - 90;
+    
+    const ex = obsX + Math.cos(rad(eastAng)) * armLen;
+    const ey = obsY + Math.sin(rad(eastAng)) * armLen;
+    const wx = obsX + Math.cos(rad(westAng)) * armLen;
+    const wy = obsY + Math.sin(rad(westAng)) * armLen;
+
+    ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(obsX, obsY-10*zoom); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(obsX, obsY-10*zoom); ctx.lineTo(wx, wy); ctx.stroke();
+
+    ctx.fillStyle = '#88ff88'; ctx.fillText('ตะวันออก', ex, ey-8);
+    ctx.fillStyle = '#ff8888'; ctx.fillText('ตะวันตก', wx, wy-8);
+  }
+
+  // --- Draw Sky View (UPDATED LABELS) ---
+  function drawSkyView(ctx, w, h, sunDeg, time) {
+    ctx.clearRect(0,0,w,h);
+    const horizonY = h * 0.75;
+    const obsAngle = getAngle(time, sunDeg);
+
+    let angleDiff = obsAngle - sunDeg;
+    if (angleDiff > 180) angleDiff -= 360;
+    if (angleDiff < -180) angleDiff += 360;
+
+    const elev = 90 - Math.abs(angleDiff);
+
+    // Sky Gradient
+    let grad;
+    if(elev > 10) {
+      grad = ctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0, '#1e5799'); grad.addColorStop(0.5, '#2989d8'); grad.addColorStop(1, '#7db9e8');
+    } else if(elev > -10) {
+      grad = ctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0, '#0f2027'); grad.addColorStop(0.6, '#203a43'); grad.addColorStop(1, '#2c5364');
+    } else {
+      grad = ctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#0f0c29');
+    }
+    ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+
+    // Stars
+    if(elev < 5) {
+      ctx.fillStyle = '#fff';
+      for(let i=0; i<40; i++) {
+        ctx.beginPath(); 
+        ctx.arc((Math.sin(i*123.45)*0.5+0.5)*w, (Math.cos(i*67.89)*0.5+0.5)*(h*0.7), 1.5, 0, Math.PI*2); 
+        ctx.fill();
+      }
+    }
+
+    // Sun/Moon Arc Position
+    const objX = w * 0.15 + (w * 0.7) * ((angleDiff + 90) / 180);
+    const objY = horizonY - (Math.max(0, elev) / 90) * (horizonY - 30);
+
+    if(elev > -15) {
+      const sGrd = ctx.createRadialGradient(objX, objY, 0, objX, objY, 40);
+      sGrd.addColorStop(0, '#fff'); sGrd.addColorStop(0.3, '#ffcc33'); sGrd.addColorStop(1, 'rgba(255,200,50,0)');
+      ctx.fillStyle = sGrd; ctx.beginPath(); ctx.arc(objX, objY, 40, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('ดวงอาทิตย์', objX, objY - 45);
+    } else {
+      const moonX = w - objX; 
+      const moonY = horizonY - (Math.max(0, -elev) / 90) * (horizonY - 30);
+      ctx.fillStyle = '#eee'; ctx.beginPath(); ctx.arc(moonX, moonY, 25, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('ดวงจันทร์', moonX, moonY - 30);
+    }
+
+    // Landscape
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.moveTo(0, horizonY); ctx.lineTo(w, horizonY); ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); 
+    ctx.moveTo(0, horizonY); ctx.lineTo(w*0.15, horizonY-30); ctx.lineTo(w*0.35, horizonY-50); 
+    ctx.lineTo(w*0.55, horizonY-20); ctx.lineTo(w*0.8, horizonY-60); ctx.lineTo(w, horizonY); ctx.fill();
+
+    // 🏔️ Labels (SWAPPED AS REQUESTED)
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('ทิศตะวันตก', w*0.2, horizonY - 60); // ภูเขาลูกแรก (ซ้าย)
+    ctx.fillText('ทิศตะวันออก', w*0.8, horizonY - 60); // ภูเขาลูกที่สอง (ขวา)
+    
+    ctx.fillStyle = '#aaa'; ctx.font = '12px monospace';
+    ctx.fillText(`Elev: ${elev.toFixed(1)}°`, w/2, h - 10);
+  }
+
+  // --- Init & Event Binding ---
+  function initPanel(id, sunDeg) {
+    const sliderId = `slider${id}`;
+    const zoomId = `zoom${id}`;
+    const timeId = `time${id}`;
+
+    function update() {
+      const timeVal = parseFloat(document.getElementById(sliderId).value);
+      const zoomVal = parseFloat(document.getElementById(zoomId).value);
+
+      const h = Math.floor(timeVal); 
+      const m = Math.round((timeVal - h) * 60);
+      document.getElementById(timeId).textContent = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+      
+      drawTopView(document.getElementById(`top${id}`).getContext('2d'), 350, 350, sunDeg, timeVal, zoomVal);
+      drawSkyView(document.getElementById(`sky${id}`).getContext('2d'), 350, 250, sunDeg, timeVal);
+    }
+
+    document.getElementById(sliderId).addEventListener('input', update);
+    document.getElementById(zoomId).addEventListener('input', update);
+    update();
+  }
+
+  function renderAll() {
+    initPanel(1, 0);   
+    initPanel(2, 180); 
+  }
+
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderAll);
+  } else {
+    renderAll();
+  }
+</script>
+</body>
+</html>
